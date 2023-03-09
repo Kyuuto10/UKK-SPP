@@ -1,0 +1,232 @@
+ public function getData($nisn, $berapa)
+    {        
+        $siswa = Siswa::where('nisn','=', $nisn)->first();
+        $kelas = Kelas::where('id','=', $siswa->id_rombels)->first();
+        $spp = SPP::where('id','=', $siswa->id_spp)
+                    ->orWhere('id','=',$kelas->id)
+                    ->first();
+
+        $trans = Pembayaran::where('nisn','=', $nisn)
+                            ->orderBy('id','DESC')
+                            ->latest()
+                            ->first();        
+        if($trans == null){
+                $data = [
+                    'nama' => $siswa->nama,
+                    'nominal' => $spp->nominal * $berapa,
+                    'bulan' => 'Belum pernah bayar',
+                    'tahun' => '',
+                    'nama' => $siswa->nama,
+                    'nis' => $siswa->nis,
+                    'id_rombels' => $kelas->nama_kelas,
+                    'alamat' => $siswa->alamat,
+                    'no_telp' => $siswa->no_telp,
+                ];
+        }else{
+            if($trans->tahun_dibayar == substr($spp->tahun, -4, 4) && $trans->bulan_dibayar == 'juni'){
+                $data = [
+                    'nama' => $siswa->nama,
+                    'nominal' => $spp->nominal * $berapa,
+                    'bulan' => 'sudah lunas',
+                    'tahun' => '',                    
+                    'nis' => $siswa->nis,
+                    'id_rombels' => $kelas->nama_kelas,
+                    'alamat' => $siswa->alamat,
+                    'no_telp' => $siswa->no_telp,
+                ];
+            }else{
+                $data = [
+                    'nama' => $siswa->nama,
+                    'nominal' => $spp->nominal * $berapa,
+                    'bulan' => $trans->bulan_dibayar .', '. $trans->tahun_dibayar,
+                    'tahun' => $trans->tahun_dibayar,
+                    'nama' => $siswa->nama,
+                    'nis' => $siswa->nis,
+                    'id_rombels' => $kelas->nama_kelas,
+                    'alamat' => $siswa->alamat,
+                    'no_telp' => $siswa->no_telp,
+                ];
+            }
+        }
+
+        return response()->json($data);
+    }
+
+
+    //function store
+
+    $this->validate($request, [
+            'nisn' => 'required|numeric',
+            'jumlah_bayar' => 'required|numeric',
+        ]);
+        
+        // dd($request->bayar_berapa);
+        for($i =0; $i < $request->bayar_berapa; $i++){
+            $bulan = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+        // dd($request->all());
+            $siswa = Siswa::where('nisn','=', $request->nisn)->first();
+            $spp = SPP::where('id',$siswa->id_spp)->first();
+            $trans = Pembayaran::where('nisn','=',$siswa->nisn)->get();
+            
+            if($trans->isEmpty()){
+                $bln = 6;
+                $tahun = substr($spp->tahun, 0, 4);
+            }else{
+                $trans = Pembayaran::where('nisn','=',$siswa->nisn)
+                                    ->orderBy('id','DESC')
+                                    ->latest()
+                                    ->first();                
+                
+                $bln = array_search($trans->bulan_dibayar, $bulan);
+                
+                if($bln == 11){
+                    $bln = 0;
+                    $tahun = $trans->tahun_dibayar + 1;
+                } else {
+                    $bln = $bln + 1;
+                    $tahun = $trans->tahun_dibayar;
+                }
+                
+                if($trans->tahun_dibayar == substr($spp->tahun, -4, 4) && $trans->bulan_dibayar == 'Juni'){                    
+                    return redirect()->route('pembayaran.index')->with('error','SPP Sudah Lunas');
+                }
+            }
+
+                // dd($pembayaranSimpan);
+                $pembayaranSimpan = Pembayaran::create([
+                    'id_petugas' => auth()->user()->id,
+                    'nisn' => $request->nisn,
+                    'tgl_bayar' => Carbon::now()->timezone('asia/jakarta'),
+                    'bulan_dibayar' => $bulan[$bln],
+                    'tahun_dibayar' => $tahun,
+                    'id_spp' => $spp->id,
+                    'jumlah_bayar' => $spp->nominal
+                ]);
+
+                ViewBayar::create([
+                    'id_petugas' => auth()->user()->id,
+                    'nisn' => $request->nisn,                    
+                    'nama' => $siswa->nama,
+                    'id_rombels' => $siswa->id_rombels,
+                    'alamat' => $siswa->alamat,
+                    'no_telp' => $siswa->no_telp,
+                    'tgl_bayar' =>  Carbon::now()->timezone('asia/jakarta'),
+                    'bulan_dibayar' => $bulan[$bln],
+                    'tahun_dibayar' => $tahun,
+                    'id_spp' => $spp->id,
+                    'jumlah_bayar' => $spp->nominal
+                ]);
+
+                $bln++;
+            }
+            if($pembayaranSimpan) {
+                toast('Data berhasil masuk','success');
+                return redirect()->route('pembayaran.index');
+            } else{
+                toast('Data gagal masuk','error');
+                return redirect()->route('pembayaran.index');
+            }
+
+            //Excel
+
+            return Excel::download(new PembayaranExport, 'pembayaran.xlsx');
+
+
+            //modal store
+
+            <div class="modal-body">
+                <form action="{{route('pembayaran.store')}}" method="POST">
+                    @csrf 
+
+                    @if($message = Session::get('error'))
+                    <div class="alert alert-info alert-block" role="alert">
+                        <span>{{$message}}</span>
+                    </div>
+                    @endif
+
+                    <div class="row">
+                    @if($siswa->count() == 0)
+
+                    <div class="form-group">
+                        <span class="form-control bg-danger text-white" style="text-align:center;">Belum ada Siswa</span>
+                    </div>
+                    @else
+                    
+                    <div class="form-group">
+                        <label for="">NISN</label>
+                        <select name="nisn" id="nisn" class="form-select">
+                                <option disabled selected option>--Pilih--</option>
+                            @foreach($siswa as $s)
+                                <option value="{{$s->nisn}}">{{$s->nisn}}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="form-group d-none" id="name">
+                        <label for="">Nama</label>
+                        <input type="text" id="nama" class="form-control" readonly>
+                    </div>
+                    @endif
+
+                    <div class="col-3">
+                        <div class="form-group">
+                            <label for="">Bayar</label>
+                            <select name="bayar_berapa" id="berapa" class="form-select">                
+                                <option value="1">x1</option>
+                                <option value="2">x2</option>
+                                <option value="3">x3</option>
+                                <option value="4">x4</option>
+                                <option value="5">x5</option>
+                                <option value="6">x6</option>
+                                <option value="7">x7</option>
+                                <option value="8">x8</option>
+                                <option value="9">x9</option>
+                                <option value="10">x10</option>
+                                <option value="11">x11</option>
+                                <option value="12">x12</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="col-9">
+                        <div class="form-group">
+                            <label for="">Nominal</label>
+                            <input type="text" id="nominal" name="jumlah_bayar" class="form-control" readonly placeholder="Nominal Bayar">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="">SPP</label>
+                        <input type="text" id="spp" class="form-control" readonly placeholder="Nominal SPP">
+                    </div>
+
+
+                    <div class="form-group d-none" id="akhir">
+                        <label for="waktuTerakhir">Waktu Terakhir Bayar</label>
+                        <input type="text" id="waktuTerakhir" class="form-control" readonly placeholder="Waktu terakhir bayar">
+                    </div>
+
+                    <input type="hidden" id="nama" class="form-control" readonly placeholder="Waktu terakhir bayar">
+                    <input type="hidden" id="nis" class="form-control" readonly placeholder="Waktu terakhir bayar">
+                    <input type="hidden" id="id_rombels" class="form-control" readonly placeholder="Waktu terakhir bayar">
+                    <input type="hidden" id="alamat" class="form-control" readonly placeholder="Waktu terakhir bayar">
+                    <input type="hidden" id="no_telp" class="form-control" readonly placeholder="Waktu terakhir bayar">                    
+
+                    @if($siswa->count() == 0) 
+
+                    <div class="form-group">
+                        <a href="{{route('pembayaran.index')}}" type="button" class="btn btn-secondary">Back</a>
+                    </div>
+
+                    @else
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary">Save</button>           
+                    </div>
+
+
+                    @endif
+                    </div>
+                </form>
+            </div>

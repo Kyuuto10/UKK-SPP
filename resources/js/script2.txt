@@ -1,0 +1,147 @@
+Schema::create('pembayaran', function (Blueprint $table) {
+            $table->id();
+            $table->integer('id_petugas');
+            $table->integer('nisn');
+            $table->date('tgl_bayar');
+            $table->string('bulan_dibayar');
+            $table->string('tahun_dibayar');  
+            $table->integer('id_spp');
+            $table->integer('jumlah_bayar');
+            $table->timestamps();
+        });
+
+
+
+        //modal show
+
+        @if(Session::get('error') > 0)
+        <script>
+            $(document).ready(function(){
+                $('#modalCreate').modal('show')
+            });
+        </script>
+        @endif
+
+        
+
+        //get data
+
+        <script>
+            $('#nisn').select2({
+                    dropdownParent: $('#modalCreate')
+                });
+            
+            $('#nisn').on('change', function(){
+                var nisn = $('#nisn').val();
+                var berapa = $('#berapa').val();
+                $('#name').removeClass('d-none');
+                $('#akhir').removeClass('d-none');
+                $('#kembalian').removeClass('d-none');
+                $.ajax({ 
+                    url: "{{url('pembayaran/getData/')}}" + "/" + nisn + "/" + berapa,
+                    type: "GET",
+                    dataType: "json",
+                    success: function(data){
+                        console.log(data);
+                        $('#nama').val(data['nama']);
+                        $('#spp').val(data['nominal']);
+                        $('#waktuTerakhir').val(data['bulan']);
+                        $('#nis').val(data['nis']);
+                        $('#id_rombels').val(data['id_rombels']);
+                        $('#alamat').val(data['alamat']);
+                        $('#no_telp').val(data['no_telp']);
+                    }
+                });
+
+                $('#berapa').on('change', function(){
+                    var spp = $('#spp').val();
+                    var bayar = $(this).val();
+                    var total = spp * bayar;
+                    $('#nominal').val(total);
+                });
+
+                $(document).ready(function(){
+                    $('#nominal, #jumlah_bayar').keyup(function(){
+                        var nominal = $('#nominal').val();
+                        var jumlah_bayar = $('#jumlah_bayar').val();
+                        var total = parseInt(jumlah_bayar) - parseInt(nominal);
+                        $('#kembalian').val(total);
+                    });
+                });
+
+                $('#jumlah_bayar').keyup(function(){
+                    var sanitized = $(this).val().replace(/[^0-9]/g, '');
+
+                    $(this).val(sanitized);
+                });
+            });
+
+        </script>
+
+
+
+        //message 
+
+        @error('alamat')
+        <div class="invalid-feedback" role="alert">
+            <strong>{{$message}}</strong>
+        </div>
+        @enderror
+
+
+
+        //can't input number
+
+        onkeypress="return event.charCode < 48 || event.charCode  >57"
+
+
+        //number format
+
+        Rp{{number_format($spp->nominal, 0,",",".")}}
+
+
+        //get data tag select
+
+        {{ ($k->id == $siswa->id_rombels) ? 'selected' : '' }}
+
+
+        //route
+
+        Route::middleware(['preventBackHistory','auth','user-access:petugas'])->group(function() {
+            Route::get('/logout', [LoginController::class,'logout'])->name('logout');
+
+            Route::get('/petugas/dashboard',[HomeController::class, 'petugasDashboard'])->name('petugas.dashboard');
+        });
+
+
+        //export 
+
+        <?php
+
+            namespace App\Exports;
+
+            use App\Models\ViewBayar;
+            use Maatwebsite\Excel\Concerns\FromCollection;
+            use Maatwebsite\Excel\Concerns\WithHeadings;
+            use Maatwebsite\Excel\Concerns\WithUpSerts;
+
+            class PembayaranExport implements FromCollection, WithHeadings
+            {
+                /**
+                * @return \Illuminate\Support\Collection
+                */
+                public function collection()
+                {
+                    return ViewBayar::all();
+                }
+
+                public function headings(): array
+                {
+                    return [    
+                        'id',        
+                        'id_petugas','nisn','nama','id_rombels','alamat','no_telp',
+                        'tgl_bayar','bulan_dibayar','tahun_dibayar','id_spp','jumlah_bayar',
+                        'created_at','updated_at'
+                    ];
+                }
+            }
